@@ -62,23 +62,37 @@ public class Server {
         ByteBuffer byteBuffer = ByteBuffer.allocate(256);
         sender.read(byteBuffer);
         String result = new String(byteBuffer.array()).trim();
-        if (!userSocket.values().contains(sender)) {
+        if(result.matches("^\\s*close\\s*$")){
+            userSocket.remove(findUserBySocket(sender));
+            log("disconnecting user...");
+            sender.close();
+        }
+        else if (!userSocket.values().contains(sender)) {
             userSocket.put(result, sender);
             log("User registered: " + result);
         } else {
 
             try {
-                int delimeter = result.indexOf('#');
-                String[] userMessage = {result.substring(0, delimeter), result.substring(delimeter + 1)};
+                int delimiter = result.indexOf('#');
+                String[] userMessage = {result.substring(0, delimiter), result.substring(delimiter + 1)};
                 SocketChannel receiver = (SocketChannel) userSocket.get(userMessage[0]);
                 log("to user: " + userMessage[1] + " to " + userMessage[0]);
-                receiver.write(
-                        new ByteBuffer[]{
-                                ByteBuffer.wrap(("\033[34mFrom: " + userSocket.entrySet().stream().filter(e -> e.getValue().equals(sender)).findFirst().get().getKey() + "\033[30m").getBytes()),
-                                ByteBuffer.wrap(userMessage[1].getBytes())});
+                send("\033[34mFrom: " + findUserBySocket(sender) + "\033[36m" + userMessage[1] + "\033[30m", receiver);
             } catch (RuntimeException e) {
                 sender.write(ByteBuffer.wrap("Usage: <Receiver name>#Message".getBytes()));
             }
+        }
+    }
+
+    private static String findUserBySocket(SocketChannel s) {
+        return userSocket.entrySet().stream().filter(e -> e.getValue().equals(s)).findFirst().get().getKey();
+    }
+
+    private static void send(String message, SocketChannel receiver) {
+        try {
+            receiver.write(ByteBuffer.wrap(message.getBytes()));
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 

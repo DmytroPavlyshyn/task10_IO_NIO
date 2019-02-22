@@ -6,26 +6,25 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.Scanner;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 
 public class Client {
-    static InetSocketAddress localhost = new InetSocketAddress("localhost", 1111);
-    static SocketChannel socketChannel;
+    private InetSocketAddress localhost;
+    private SocketChannel socketChannel;
+    private boolean isOnline;
 
-    static {
-        try {
-            socketChannel = SocketChannel.open(localhost);
-            log("Connecting to Server on port 1111...");
-            socketChannel.configureBlocking(false);
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    void connect() throws IOException {
+        localhost = new InetSocketAddress("localhost", 1111);
+        socketChannel = SocketChannel.open(localhost);
+        log("Connecting to server on port 1111...");
+        socketChannel.configureBlocking(false);
+        isOnline = true;
     }
 
-    public static void messageReceiver() {
-        while (true) {
+    private void messageReceiver() {
+        while (isOnline) {
             ByteBuffer byteBuffer = ByteBuffer.allocate(256);
             try {
                 socketChannel.read(byteBuffer);
@@ -41,29 +40,61 @@ public class Client {
         }
     }
 
-    public static void messageSender() {
+    private void messageSender() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.println("For exit: close");
         try {
-            while (true) {
-                byte[] message = new Scanner(System.in).nextLine().getBytes();
-                ByteBuffer buffer = ByteBuffer.wrap(message);
+            while (isOnline) {
+                String message = scanner.nextLine();
+                ByteBuffer buffer = ByteBuffer.wrap(message.getBytes());
                 socketChannel.write(buffer);
-
                 log("sending...");
                 buffer.clear();
-
+                if (message.matches("\\s*close\\s*")) {
+                    disconnect();
+                    return;
+                }
                 Thread.sleep(1000);
-
             }
         } catch (InterruptedException | IOException e) {
             e.printStackTrace();
         }
+
     }
 
-    public static void main(String[] args) {
+    void disconnect() {
+        try {
+            log("disconnecting...");
+            socketChannel.finishConnect();
+            socketChannel.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            isOnline = false;
+        }
+    }
 
+    public void messageController() {
         Executor executor = Executors.newFixedThreadPool(2);
-        executor.execute(Client::messageSender);
-        executor.execute(Client::messageReceiver);
+        executor.execute(this::messageSender);
+        executor.execute(this::messageReceiver);
+        while (isOnline){               //TODO
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        log("shotdown");
+        ((ExecutorService) executor).shutdown();
+    }
+
+    public static void main(String[] args) throws IOException {
+        Client client = new Client();
+        client.connect();
+        client.messageController();
+
+
     }
 
     private static void log(String str) {
